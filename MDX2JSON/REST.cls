@@ -115,7 +115,7 @@ ClassMethod Logout() As %Status
 /// Test method, outputs <b>%request</b>, <b>%response</b> and <b>%session</b> objects. 
 ClassMethod Test() As %Status
 {
-	set obj = ##class(%ZEN.proxyObject).%New()
+	set obj = ##class(%Library.DynamicObject).%New()
 	set obj.Status = "OK"
 	set obj.Embed = $g(^MDX2JSON.Embed, $g(^%MDX2JSON.Embed, ""))
 	set obj.User = $Username
@@ -133,6 +133,7 @@ ClassMethod Test() As %Status
 		set obj.Response = %response
 		//set obj.Session = %session
 	}
+	
 	do obj.%ToJSON()
 	return $$$OK
 }
@@ -282,7 +283,7 @@ ClassMethod WriteFiltersForDataSource() As %Status
   	return st
 }
 
-///Execute requests from kpi
+/// Execute requests from kpi
 ClassMethod KPIExecute() As %Status
 {
 	try{
@@ -377,7 +378,7 @@ ClassMethod GetConfig(Application) As %Status
 ClassMethod SetConfig() As %Status
 {
 	set config = $$$R("Config")
-	if (($IsObject(config)) && (config.%IsA("%ZEN.proxyObject"))) {
+	if (($IsObject(config)) && (config.%IsA("%Library.DynamicObject"))) {
 		set config = ..OutputToStr(config,"%ToJSON")
 	}
 	return ##class(MDX2JSON.Users).SetConfig($$$R("Application"),config)
@@ -438,9 +439,9 @@ ClassMethod WriteAddons() As %Status
 	
 	#dim rs As %SQL.ClassQueryResultSet = ##class(%File).FileSetFunc(path, "*.js")
 	
-	set list = $$$NewDynDTList
+	set list = []
 	while rs.%Next() {
-		$$$Insert(list, url _ rs.ItemName)
+		do list.%Push(url _ rs.ItemName)
 	}
 	set sc = ##class(MDX2JSON.Utils).CreateAddons(list)
 	

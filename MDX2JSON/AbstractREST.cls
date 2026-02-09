@@ -54,7 +54,7 @@ ClassMethod OnPreDispatch(pUrl As %String, pMethod As %String, ByRef pContinue A
 ClassMethod ConvertRequestBody() As %Status
 {
 	#dim %request As %CSP.Request
-	#dim obj As %ZEN.proxyObject
+	#dim obj As %Library.DynamicObject
 
 	return:'$isobject(%request.Content) $$$OK //empty request body - nothing to do
 
@@ -114,30 +114,30 @@ ClassMethod Login(skipheader As %Boolean = 1) As %Status
 	Return $$$OK
 }
 
-
 /// Returns info about MDX2JSON package mapping
-ClassMethod GetMappings() As %ArrayOfObjects
+ClassMethod GetMappings() As %Library.DynamicObject
 {
-	Set result = ##class(%ArrayOfObjects).%New()
-	Set mapped = ##class(%ListOfDataTypes).%New()
-	Set unmapped = ##class(%ListOfDataTypes).%New()
+	Set result = ##class(%Library.DynamicObject).%New()
+	Set mapped = []
+	Set unmapped = []
 	Set st = ##class(%CSP.Portal.Utils).%GetNamespaceList(.nslist)
 	If $$$ISERR(st) Quit st
 	Set namespace = $O(nslist(""))
+	
 	While namespace '= "" {
 		Set enabled = $lg(nslist(namespace),1)
 		If enabled = 1 {
 			Set st = ..CheckNamespace(namespace)
 			if $$$ISOK(st) {
-				do mapped.Insert(namespace)
+				do mapped.%Push(namespace)
 			} else {
-				do unmapped.Insert(namespace)
+				do unmapped.%Push(namespace)
 			}
 		}
 		Set namespace = $O(nslist(namespace))
 	}
-	do result.SetAt(mapped,"Mapped")
-	do result.SetAt(unmapped,"Unmapped")
+	set result.Mapped = mapped
+	set result.Unmapped = unmapped
 	return result
 }
 

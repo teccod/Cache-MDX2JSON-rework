@@ -75,7 +75,7 @@ ClassMethod OpenDashboardByName(DashName As %Integer, Output Dashboard As %DeepS
 }
 
 /// Converts %DeepSee.Dashboard.Definition widgets into %ZEN.proxyObject.
-ClassMethod WidgetsToProxyObject(Dashboard As %DeepSee.Dashboard.Definition, Output Widgetlist As %ZEN.proxyObject) As %Status
+ClassMethod WidgetsToProxyObject(Dashboard As %DeepSee.Dashboard.Definition, Output Widgetlist As %Library.DynamicObject) As %Status
 {
 	#Dim widget As %DeepSee.Dashboard.Widget
 	
@@ -133,7 +133,7 @@ ClassMethod GetCubeMeasuresDataType(Widget, Number, CubeName, Output DataType As
 }
 
 /// Converts relevant parts of %DeepSee.Dashboard.Widget object into %ZEN.proxyObject.
-ClassMethod WidgetToProxyObject(Widget As %DeepSee.Dashboard.Widget, CubeName As %String) As %ZEN.proxyObject [ Internal ]
+ClassMethod WidgetToProxyObject(Widget As %DeepSee.Dashboard.Widget, CubeName As %String) As %Library.DynamicObject [ Internal ]
 {
 	set obj = $$$NewDynObj
 
@@ -171,14 +171,13 @@ ClassMethod WidgetToProxyObject(Widget As %DeepSee.Dashboard.Widget, CubeName As
 	set obj.drillDownDataSource = Widget.drillDownDataSource
 	set obj.cube = CubeName
 	set obj.displayInfo = ..GetWidgetDisplayInfo(Widget)
-	set obj.controls = $$$NewDynObjList
-	set obj.dataProperties = $$$NewDynObjList
-
+	set obj.controls = []
+	set obj.dataProperties = []
 	for i=1:1:Widget.controls.Count()
 	{
 		set control = ..WidgetControlToProxyObject(Widget, i, CubeName)
 		if $IsObject(control) {
-			$$$Insert(obj.controls,control)
+			do obj.controls.%Push(control)
 		}
 	}
 	
@@ -189,7 +188,7 @@ ClassMethod WidgetToProxyObject(Widget As %DeepSee.Dashboard.Widget, CubeName As
  		set widgetData.override = override
  		set dataProperty = ..WidgetDataPropertyToProxyObject(widgetData)
 		if $IsObject(dataProperty) {
-			$$$Insert(obj.dataProperties,dataProperty)
+			do obj.dataProperties.%Push(dataProperty)
 		}
 	}
 
@@ -207,13 +206,13 @@ ClassMethod WidgetToProxyObject(Widget As %DeepSee.Dashboard.Widget, CubeName As
 	}
 	
 	if Widget.overrides.Count()>0 {
-		set obj.overrides = $$$NewDynObjList
+		set obj.overrides = []
 		do {
 			set overridestr = Widget.overrides.GetNext(.key) // we take DeepSee widget override string (in "json" format)
 			quit:key=""
-			do ##class(%ZEN.Auxiliary.jsonProvider).%ConvertJSONToObject(overridestr,,.override,1) // convert it into %ZEN.proxyObject
+			do ##class(%ZEN.Auxiliary.jsonProvider).%ConvertJSONToObject(overridestr,,.override,1) // convert it into %Library.DynamicObject
 			if $IsObject(override) {
-				$$$Insert(obj.overrides,override)
+				do obj.overrides.%Push(override)
 			}
 		} while key'=""
 	}
@@ -247,24 +246,24 @@ ClassMethod WidgetDataPropertyToProxyObject(dataProperty As %DeepSee.Dashboard.D
 	quit obj
 }
 
-ClassMethod ProcesscomboChart(Widget As %DeepSee.Dashboard.Widget, Obj As %ZEN.proxyObject)
+ClassMethod ProcesscomboChart(Widget As %DeepSee.Dashboard.Widget, Obj As %Library.DynamicObject)
 {
 
-	set Obj.seriesTypes = $$$NewDynDTList
+	set Obj.seriesTypes = []
 	for i=1:1:Widget.dataSeries.Count()
 	{
-		$$$Insert(Obj.seriesTypes,Widget.dataSeries.GetAt(i).type)
+		do Obj.seriesTypes.%Push(Widget.dataSeries.GetAt(i).type)
 	}
 }
 
-ClassMethod ProcesstreeMapChart(Widget As %DeepSee.Dashboard.Widget, Obj As %ZEN.proxyObject)
+ClassMethod ProcesstreeMapChart(Widget As %DeepSee.Dashboard.Widget, Obj As %Library.DynamicObject)
 {
 	do ..ProcesscomboChart(Widget, Obj)
 }
 
-ClassMethod ProcesstextMeter(Widget As %DeepSee.Dashboard.Widget, Obj As %ZEN.proxyObject)
+ClassMethod ProcesstextMeter(Widget As %DeepSee.Dashboard.Widget, Obj As %Library.DynamicObject)
 {
-	set Obj.dataProperties = $$$NewDynDTList
+	set Obj.dataProperties = []
 	for i=1:1:Widget.dataProperties.Count()
 	{
 		set dataProperty = $$$NewDynObj
@@ -274,7 +273,7 @@ ClassMethod ProcesstextMeter(Widget As %DeepSee.Dashboard.Widget, Obj As %ZEN.pr
 			set dataProperty = ..WidgetDataPropertyToProxyObject(widgetData)
 			if $IsObject(dataProperty) 
 			{ 
-				$$$Insert(Obj.dataProperties,dataProperty)
+				do Obj.dataProperties.%Push(dataProperty)
 			}
 
 		}
@@ -282,11 +281,11 @@ ClassMethod ProcesstextMeter(Widget As %DeepSee.Dashboard.Widget, Obj As %ZEN.pr
 }
 
 /// Converts %DeepSee.Dashboard.Control object into %ZEN.proxyObject, handles run-time DeepSee variables.
-ClassMethod WidgetControlToProxyObject(Widget As %DeepSee.Dashboard.Widget, Number As %Integer, CubeName As %String) As %ZEN.proxyObject [ Internal ]
+ClassMethod WidgetControlToProxyObject(Widget As %DeepSee.Dashboard.Widget, Number As %Integer, CubeName As %String) As %Library.DynamicObject [ Internal ]
 {
 	set obj = $$$NewDynObj
 	set st = Widget.controls.GetAt(Number).%CopyTo(obj) // copy widget control properties to proxyObj
-
+	
 	set obj.label = ##class(%DeepSee.UserPortal.Utils).%ResolveText(obj.label)
 	set obj.source = Widget.name
 
@@ -302,14 +301,17 @@ ClassMethod WidgetControlToProxyObject(Widget As %DeepSee.Dashboard.Widget, Numb
 	if ($e(obj.value)="@") {
 		set name = $e(obj.value,2,*)
 		set value = ##class(%DeepSee.UserPortal.Utils).%GetUserSetting(name,.st)
+		
 		if $e(value,1,2)="&[" {
 			set obj.value = value
 		} else {
 			set obj.value = "&[" _ value _ "]"
 		}
 	}
+	
 	// last OR is suppose to populate dashboard with values in case of applyVariable type filter
 	set:((obj.action="applyFilter") || (obj.action="setFilter") || (obj.action="applyVariable")) obj.values = ..GetMembersForFilter(CubeName,obj.targetProperty)
+	
 	return obj
 }
 
@@ -352,11 +354,11 @@ ClassMethod GetMdx(pPivotName As %String, Output MDX, Output BaseMDX) As %Status
 }
 
 /// Return list of possible filter member values for a given dashboard data source and filter.
-/// Returns list of %ZEN.proxyObject:<br/>
+/// Returns list of %Library.DynamicObject:<br/>
 ClassMethod GetMembersForFilter(DataSource As %String, Filter As %String) As %ListOfObjects
 {
 	set st = ##class(%DeepSee.Dashboard.Utils).%GetMembersForFilter(DataSource,Filter,.tMembers,.tDefaultFilterValue,,.tRelatedFilters,0,,.tValueList)
-	set members = $$$NewDynObjList
+	set members = []
 
 	set key = $order(tMembers(""))
 	while (key '= "") {
@@ -365,13 +367,14 @@ ClassMethod GetMembersForFilter(DataSource As %String, Filter As %String) As %Li
 		set member.path = $lg(tMembers(key),2)
 		set member.info = $lg(tMembers(key),3)
 		set key = $order(tMembers(key))
-		$$$Insert(members,member)
+		do members.%Push(member)
 	}
+	
 	return members
 }
 
-/// Converts %DeepSee.Dashboard.Definition display information into %ZEN.proxyObject.
-ClassMethod GetDashboardDisplayInfo(Dashboard As %DeepSee.Dashboard.Definition) As %ZEN.proxyObject
+/// Converts %DeepSee.Dashboard.Definition display information into %Library.DynamicObject.
+ClassMethod GetDashboardDisplayInfo(Dashboard As %DeepSee.Dashboard.Definition) As %Library.DynamicObject
 {
 	set DisplayInfo = $$$NewDynObj
 	set DisplayInfo.snapToGrid = Dashboard.snapTo // Dashboard is in "snap to grid" mode.
@@ -381,8 +384,8 @@ ClassMethod GetDashboardDisplayInfo(Dashboard As %DeepSee.Dashboard.Definition) 
 	return DisplayInfo
 }
 
-/// Converts %DeepSee.Dashboard.Widget display information into %ZEN.proxyObject.
-ClassMethod GetWidgetDisplayInfo(Widget As %DeepSee.Dashboard.Widget) As %ZEN.proxyObject
+/// Converts %DeepSee.Dashboard.Widget display information into %Library.DynamicObject.
+ClassMethod GetWidgetDisplayInfo(Widget As %DeepSee.Dashboard.Widget) As %Library.DynamicObject
 {
 	set DisplayInfo = $$$NewDynObj
 
@@ -398,8 +401,8 @@ ClassMethod GetWidgetDisplayInfo(Widget As %DeepSee.Dashboard.Widget) As %ZEN.pr
 	return DisplayInfo
 }
 
-/// Converts %DeepSee.Dashboard.Definition display information into %ZEN.proxyObject.
-ClassMethod GetDashboardInfo(Dashboard As %DeepSee.Dashboard.Definition) As %ZEN.proxyObject
+/// Converts %DeepSee.Dashboard.Definition display information into %Library.DynamicObject.
+ClassMethod GetDashboardInfo(Dashboard As %DeepSee.Dashboard.Definition) As %Library.DynamicObject
 {
 	set Info = $$$NewDynObj
 	set Info.title = ##class(%DeepSee.UserPortal.Utils).%ResolveText(Dashboard.title)
@@ -410,6 +413,7 @@ ClassMethod GetDashboardInfo(Dashboard As %DeepSee.Dashboard.Definition) As %ZEN
 /// Returns name of widget's pivot source cube.
 ClassMethod GetWidgetCube(Dashboard As %DeepSee.Dashboard.Definition, WidgetNumber As %Integer) As %String
 {
+	
 	set datasource = ..DetermineWidgetDataSource(Dashboard, WidgetNumber)
 	
 	if ##class(%DeepSee.UserLibrary.Utils).%FolderItemExists(datasource,.id) {

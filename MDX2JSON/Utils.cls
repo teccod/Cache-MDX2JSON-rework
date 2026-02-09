@@ -80,6 +80,7 @@ ClassMethod WriteJSONfromMDX(MDX As %String, Timeout As %Integer = 0) As %Status
 		return:$$$ISERR(tSC) tSC
 		
 		set obj = RS.ToProxyObject(.tSC)
+		
 		return:$$$ISERR(tSC) tSC
 
 		set %dsQuery = MDX
@@ -95,13 +96,13 @@ ClassMethod WriteJSONfromMDX(MDX As %String, Timeout As %Integer = 0) As %Status
 		$$$DynObjToJSON(obj)
 	
 	}else{ // if cube is not compound execute the query in usual way
-
+		
 		set tSC = ..ExecuteResultSet(RS, ,Timeout)
 		return:$$$ISERR(tSC) tSC
 		
 		set obj = RS.ToProxyObject(.tSC)
 		return:$$$ISERR(tSC) tSC
-
+		
 		set %dsQuery = MDX
 		set %dsResultSet = RS
 
@@ -397,7 +398,7 @@ ClassMethod GetTermList(pTermList As %String)
 	set st = $$$OK
 	try {
 		do ##class(%DeepSee.TermList).%GetValueArray(pTermList,.pArray)
-		set obj = ##class(%ZEN.proxyObject).%New()
+		set obj = ##class(%Library.DynamicObject).%New()
 		m obj.%data = pArray
 		set st = obj.%ToJSON()
 	} catch ex {
@@ -440,12 +441,12 @@ ClassMethod GetDashboard(pDashName As %String) As %Status
 		set st = ##class(MDX2JSON.DashboardFilters).WidgetsToProxyObject(dash, .widgetlist)
 		return:($$$ISERR(st)) st
 		w "" // weird hack required for 15.3
-		
+
 		set %dsDashboard = pDashName
 		
 		// check if audit global hold something and execute it
 		try {xecute ^DeepSee.AuditCode} catch {}
-
+		
 		$$$DynObjToJSON(widgetlist)
 	} catch ex {
 		set st = ex.AsStatus()
@@ -497,7 +498,7 @@ ClassMethod GetFormat() As %Status
 	set datelist="DD Mmm [YY]YY^MM/DD/[YY]^DD Mmm [YY]YY^YYYY-MM-DD^DD/MM/[YY]YY^Mmm D, YYYY^Mmm D YYYY^Mmm DD [YY]YY^YYYYMMDD^Mmmmmm D, YYYY^W^Www^Wwwwww^[D]D/[M]M/YYYY^nnn"	
 	set timelist="hh:mm:ss,hh:mm,hh:mm:ss[AM/PM],hh:mm[AM/PM]" // lists taken from %CSP.UI.Portal.NLSEdit - DrawProperties
 	set proplist = "AM,DateSeparator,DecimalSeparator,MinusSign,MonthAbbr,MonthName,NumericGroupSeparator,NumericGroupSize,PM,PlusSign,TimePrecision,TimeSeparator,WeekdayAbbr,WeekdayName"
-	set obj = ##class(%ZEN.proxyObject).%New()
+	set obj = ##class(%Library.DynamicObject).%New()
 	
 	try {
 		for i = 1:1:$L(proplist, ",") {
@@ -516,7 +517,7 @@ ClassMethod GetFormat() As %Status
 	return st
 }
 
-ClassMethod ExecuteAction(Cube As %String, Action As %String, Context As %ZEN.proxyObject = {##class(%ZEN.proxyObject).%New()}) As %Status
+ClassMethod ExecuteAction(Cube As %String, Action As %String, Context As %Library.DynamicObject = {##class(%Library.DynamicObject).%New()}) As %Status
 {
 	set st = $$$OK
 	set Cube = $$$UPPER(Cube)
@@ -552,12 +553,13 @@ ClassMethod WritePivotVariablesForCube(Cube As %String) As %Status
 	quit st
 }
 
-ClassMethod CreateAddons(Addons As %ListOfDataTypes) As %Status
+ClassMethod CreateAddons(Addons As %DynamicArray) As %Status
 {
 	#dim sc,sc1 As %Status = $$$OK
 	set base = "DSW.Addons."
-	for i=1:1:$$$ListSize(Addons) {
-		set file = $$$ListGet(Addons, i)
+	for i=1:1:Addons.%Size() {
+		set file = Addons.%Get(i)
+		
 		set file = ##class(%File).GetFilename(file)
 		set addon = $p(file, ".", 1, *-1) // remove extension
 		
@@ -626,7 +628,7 @@ ClassMethod CreateAddonClass(Class As %Dictionary.CacheClassname) As %Status
 
 /// Add new widgets and edit existing ones directly from DeepSeeWeb
 /// it takes widget name(key) as unique identifier as string, dashboard name as string
-/// and object with parameters as zen.proxyObject
+/// and object with parameters as %Library.DynamicObject
 ClassMethod AddWidget(sWidget As %String, sDashboard As %String, key As %String) As %Status
 {
 	set st = $$$OK
@@ -740,7 +742,7 @@ ClassMethod DeleteWidget(wName As %String, sDashboard As %String) As %Status
 }
 
 /// the collection of necessary parameters for building widget 
-ClassMethod UpdateWidget(widgetToUpdate As %DeepSee.Dashboard.Widget, data As %ZEN.proxyObject) As %Status
+ClassMethod UpdateWidget(widgetToUpdate As %DeepSee.Dashboard.Widget, data As %Library.DynamicObject) As %Status
 {
 	set st = $$$OK
 

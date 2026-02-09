@@ -5,9 +5,9 @@ Include MDX2JSON.MDX2JSON
 Class MDX2JSON.ResultSet Extends %DeepSee.ResultSet
 {
 
-/// Converts ResultSet to %ZEN.proxyObject.<br>
+/// Converts ResultSet to %Library.DynamicObject.<br>
 /// <b>pStatus</b> - Status of execution.<br>
-Method ToProxyObject(Output pStatus As %Status) As %ZEN.proxyObject
+Method ToProxyObject(Output pStatus As %Status) As %Library.DynamicObject
 {
 	set ^DeepSee.QueryLog($UserName,$I(^DeepSee.QueryLog($UserName))) = ..%GetQueryText()
 	set status = $$$ERROR($$$GeneralError,"Error occured while executing ##class(MDX2JSON.ResultSet).ToProxyObject() method")
@@ -47,7 +47,7 @@ Method ToProxyObject(Output pStatus As %Status) As %ZEN.proxyObject
 }
 
 /// Returns meta-information about ResultSet.
-Method InfoToProxyObject() As %ZEN.proxyObject
+Method InfoToProxyObject() As %Library.DynamicObject
 {
 	set tCubeIndex = ..%CubeKey
 	set tQueryKey = ..%QueryKey
@@ -84,7 +84,7 @@ Method InfoToProxyObject() As %ZEN.proxyObject
 }
 
 /// Returns array of Axes
-Method AxesToListOfObjects() As %ListOfObjects
+Method AxesToListOfObjects() As %DynamicArray
 {
 	set tCubeIndex = ..%CubeKey
 	set tQueryKey = ..%QueryKey
@@ -94,22 +94,22 @@ Method AxesToListOfObjects() As %ListOfObjects
 		set tAxisCount = 2 //because filters count as axes before 2015.1
 	}
 
-	set axes=$$$NewDynObjList
+	set axes = []
 
 	for a = 1:1:tAxisCount {
 		set tAxisSize(a) = ..%GetAxisSize(a)
 		set tAxisKeys(a) = $G($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"axis",a))
-		$$$Insert(axes,..ProcessOneAxis(tCubeIndex,tAxisKeys(a),a))
+		do axes.%Push(..ProcessOneAxis(tCubeIndex,tAxisKeys(a),a))
 	}
 
-	if ($$$ListSize(axes)=0) {
+	if (axes.%Size()=0) {
 		set axes = ..GetDefaultAxes()
 	}
 
 	return axes
 }
 
-Method ProcessOneAxis(CubeIndex, AxisKey, AxisNumber) As %ZEN.proxyObject [ Internal ]
+Method ProcessOneAxis(CubeIndex, AxisKey, AxisNumber) As %Library.DynamicObject [ Internal ]
 {
 	set tCubeName = $$$UPPER(..%Cube)
 	set tQueryKey = ..%QueryKey
@@ -120,7 +120,7 @@ Method ProcessOneAxis(CubeIndex, AxisKey, AxisNumber) As %ZEN.proxyObject [ Inte
 	return axis
 }
 
-Method ProcessOneAxisCell(CubeIndex, AxisKey, CubeName, QueryKey, AxisNumber, Node) As %ZEN.proxyObject [ Internal ]
+Method ProcessOneAxisCell(CubeIndex, AxisKey, CubeName, QueryKey, AxisNumber, Node) As %Library.DynamicObject [ Internal ]
 {
 	set cell=$$$NewDynObj
 
@@ -131,17 +131,17 @@ Method ProcessOneAxisCell(CubeIndex, AxisKey, CubeName, QueryKey, AxisNumber, No
 
 	// now we process cell children, if any exist
 	if ($D($$$DeepSeeAxisGLVN(CubeIndex, AxisKey, "axes", Node, "ch")) = 10) && ($LG(tNode, 1)'="agg") {
-		set cell.children = $$$NewDynObjList
+		set cell.children = []
 		set key = $O($$$DeepSeeAxisGLVN(CubeIndex, AxisKey, "axes", Node, "ch", ""))
 		while (key'="") {
 			set children = ..ProcessOneAxisCell(CubeIndex, AxisKey, CubeName, QueryKey, AxisNumber, key)
 			// Append children to cell
 			if $isobject(children) {
-				if ((children.%IsA("%ZEN.proxyObject")) || (children.%IsA("%Library.Object"))) {
-					$$$Insert(cell.children,children)
-				} elseif ((children.%IsA("%Collection.AbstractList")) || (children.%IsA("%Library.Array"))) {
-					for i=1:1:$$$ListSize(children) {
-						$$$Insert(cell.children,$$$ListGet(children,i))
+				if ((children.%IsA("%Library.DynamicObject")) || (children.%IsA("%Library.Object"))) {
+					do cell.children.%Push(children)
+				} elseif ((children.%IsA("%Collection.AbstractList")) || (children.%IsA("%Library.DynamicArray"))) {
+					for i=1:1:children.%Size() {
+						do cell.children.%Push(children.%Get(i))
 					}
 				}
 			}
@@ -209,7 +209,7 @@ Method IsCellNull(Cell, AxisNumber, Node)
 	//return:(caption'="") 0
 	//return:(path="") 1
 	set children = Cell.children
-	return:(($isobject(children)) && ($$$ListSize(children)>0)) 0 // cell has children
+	return:(($isobject(children)) && (children.%Size())>0) 0 // cell has children
 
 	if (Cell.type'="lit") {
 		set key = $O($$$DeepSeeResultsGLVN(..%CubeKey, ..%QueryKey, "leaf", AxisNumber, ""))
@@ -227,9 +227,9 @@ Method IsCellNull(Cell, AxisNumber, Node)
 }
 
 /// Returns array of cells (left-to-right, up-to-down)
-Method DataToListOfDataTypes() As %ListOfDataTypes
+Method DataToListOfDataTypes() As %DynamicArray
 {
-	set data = $$$NewDynDTList
+	set data = []
 
 	set tCubeIndex = ..%CubeKey
 	set tQueryKey = ..%QueryKey
@@ -247,12 +247,12 @@ Method DataToListOfDataTypes() As %ListOfDataTypes
 	set tNodeNo = ""
 
 	if (tAxisCount = 0) {
-		$$$Insert(data,..%GetValue())
+		do data.%Push(..%GetValue())
 	} elseif (tAxisCount = 1) {
 		set tRowCount = 1
 		set c = 0
 		while (tItemNo(1)'="") {
-			$$$Insert(data,..%GetValue(tAddr(1)))
+			do data.%Push(..%GetValue(tAddr(1)))
 			set c = c + 1
 			set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,tItemNo(1)),1,tNodeNo)
 			set tAddr(1) = tNodeNo
@@ -264,7 +264,7 @@ Method DataToListOfDataTypes() As %ListOfDataTypes
 				set tAddr(1) = tNodeNo
 				while (tItemNo(1)'="") {
 					set tValue = ..%GetValue(tAddr...) // for 2 axes ..%GetValue(tAddr(1),tAddr(2))
-					$$$Insert(data,tValue)
+					do data.%Push(tValue)
 
 					set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,tItemNo(1)),1,tNodeNo)
 					set tAddr(1) = tNodeNo
@@ -277,9 +277,9 @@ Method DataToListOfDataTypes() As %ListOfDataTypes
 	return data
 }
 
-ClassMethod GetDefaultAxes() As %ListOfObjects [ Internal ]
+ClassMethod GetDefaultAxes() As %DynamicArray [ Internal ]
 {
-	set axes=$$$NewDynObjList // all axes
+	set axes = [] // all axes
 
 	set cell=$$$NewDynObj
 	set cell.caption = $$$Text("Count","%DeepSee")
@@ -298,14 +298,14 @@ ClassMethod GetDefaultAxes() As %ListOfObjects [ Internal ]
 	set cell2.dimension = "%Search"
 
 	set axis = $$$NewDynObj // one axis
-	set axis.tuples = $$$NewDynObjList //array of cells for one axis
-	$$$Insert(axis.tuples,cell)
-	$$$Insert(axes,axis)
+	set axis.tuples = [] //array of cells for one axis
+	do axis.tuples.%Push(cell)
+	do axes.%Push(axis)
 
 	set axis2 = $$$NewDynObj
-	set axis2.tuples = $$$NewDynObjList
-	$$$Insert(axis2.tuples,cell2)
-	$$$Insert(axes,axis2)
+	set axis2.tuples = []
+	do axis2.tuples.%Push(cell2)
+	do axes.%Push(axis2)
 
 	return axes
 }
