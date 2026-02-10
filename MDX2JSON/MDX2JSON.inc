@@ -17,7 +17,7 @@ ROUTINE MDX2JSON.MDX2JSON [Type=INC]
 
 #; For work with dynamic objects
 #if (($$$comClassDefined("%Library.AbstractObject"))&&($get($$$Global($$$Features))["newjson"))
-	#define NewDynObj ##class(%Object).%New()
+	#define NewDynObj ##class(%Library.DynamicObject).%New()
 	#define NewDynDTList ##class(%Array).%New()
 	#;define NewDynDTArray $$$NewDynDTList
 	#define NewDynObjList $$$NewDynDTList
@@ -28,7 +28,7 @@ ROUTINE MDX2JSON.MDX2JSON [Type=INC]
 	#define ListSize(%obj) %obj.$size()
 	#define ListGet(%obj,%i) %obj.$get(%i-1)
 #else
-	#define NewDynObj ##class(%ZEN.proxyObject).%New()
+	#define NewDynObj ##class%Library.DynamicObject).%New()
 	#define NewDynDTList ##class(%ListOfDataTypes).%New()
 	#;define NewDynDTArray ##class(%ArrayOfDataTypes).%New()
 	#define NewDynObjList ##class(%ListOfObjects).%New()

@@ -115,7 +115,7 @@ Method ProcessOneAxis(CubeIndex, AxisKey, AxisNumber) As %Library.DynamicObject 
 	set tQueryKey = ..%QueryKey
 
 	set axis=$$$NewDynObj
-	set axis.tuples = ..ProcessOneAxisCell(CubeIndex, AxisKey, tCubeName, tQueryKey, AxisNumber, 1)
+	set axis.tuples = ..ProcessOneAxisCell(CubeIndex, AxisKey, tCubeName, tQueryKey, AxisNumber, 1) 
 
 	return axis
 }
@@ -123,6 +123,7 @@ Method ProcessOneAxis(CubeIndex, AxisKey, AxisNumber) As %Library.DynamicObject 
 Method ProcessOneAxisCell(CubeIndex, AxisKey, CubeName, QueryKey, AxisNumber, Node) As %Library.DynamicObject [ Internal ]
 {
 	set cell=$$$NewDynObj
+	set cell.children = []
 
 	set tNode = $G($$$DeepSeeAxisGLVN(CubeIndex,AxisKey,"axes",Node))
 
@@ -131,21 +132,19 @@ Method ProcessOneAxisCell(CubeIndex, AxisKey, CubeName, QueryKey, AxisNumber, No
 
 	// now we process cell children, if any exist
 	if ($D($$$DeepSeeAxisGLVN(CubeIndex, AxisKey, "axes", Node, "ch")) = 10) && ($LG(tNode, 1)'="agg") {
-		set cell.children = []
 		set key = $O($$$DeepSeeAxisGLVN(CubeIndex, AxisKey, "axes", Node, "ch", ""))
 		while (key'="") {
 			set children = ..ProcessOneAxisCell(CubeIndex, AxisKey, CubeName, QueryKey, AxisNumber, key)
-			// Append children to cell
-			if $isobject(children) {
-				if ((children.%IsA("%Library.DynamicObject")) || (children.%IsA("%Library.Object"))) {
-					do cell.children.%Push(children)
-				} elseif ((children.%IsA("%Collection.AbstractList")) || (children.%IsA("%Library.DynamicArray"))) {
-					for i=1:1:children.%Size() {
-						do cell.children.%Push(children.%Get(i))
+				// Append children to cell
+				if $isobject(children){
+					if (children.%IsA("%Library.DynamicObject")) {
+						do cell.children.%Push(children)
+					} elseif (children.%IsA("%Library.DynamicArray")) {
+						for i=0:1:(children.%Size()-1) {
+							do cell.children.%Set(i,children.%Get(i))
+						}
 					}
 				}
-			}
-
 			set key = $O($$$DeepSeeAxisGLVN(CubeIndex, AxisKey, "axes", Node, "ch", key))
 		}
 	}
@@ -209,7 +208,7 @@ Method IsCellNull(Cell, AxisNumber, Node)
 	//return:(caption'="") 0
 	//return:(path="") 1
 	set children = Cell.children
-	return:(($isobject(children)) && (children.%Size())>0) 0 // cell has children
+	return:(($isobject(children)) && (children.%Size()>0)) 0 // cell has children
 
 	if (Cell.type'="lit") {
 		set key = $O($$$DeepSeeResultsGLVN(..%CubeKey, ..%QueryKey, "leaf", AxisNumber, ""))
@@ -247,12 +246,12 @@ Method DataToListOfDataTypes() As %DynamicArray
 	set tNodeNo = ""
 
 	if (tAxisCount = 0) {
-		do data.%Push(..%GetValue())
+		do data.%Push(..%GetValue(), "number")
 	} elseif (tAxisCount = 1) {
 		set tRowCount = 1
 		set c = 0
 		while (tItemNo(1)'="") {
-			do data.%Push(..%GetValue(tAddr(1)))
+			do data.%Push(..%GetValue(tAddr(1)), "number")
 			set c = c + 1
 			set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,tItemNo(1)),1,tNodeNo)
 			set tAddr(1) = tNodeNo
@@ -264,7 +263,7 @@ Method DataToListOfDataTypes() As %DynamicArray
 				set tAddr(1) = tNodeNo
 				while (tItemNo(1)'="") {
 					set tValue = ..%GetValue(tAddr...) // for 2 axes ..%GetValue(tAddr(1),tAddr(2))
-					do data.%Push(tValue)
+					do data.%Push(tValue, "number")
 
 					set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,tItemNo(1)),1,tNodeNo)
 					set tAddr(1) = tNodeNo
