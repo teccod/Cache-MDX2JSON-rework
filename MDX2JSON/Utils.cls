@@ -116,6 +116,60 @@ ClassMethod WriteJSONfromMDX(MDX As %String, Timeout As %Integer = 0) As %Status
 	return $$$OK
 }
 
+/// MDX execution with optional pagination (for debugging / paged results).<br>
+/// Same contract as WriteJSONfromMDX; when <b>pPage</b> and <b>pPageSize</b> are set, returns only the requested page of rows and adds pagination fields to Info.
+ClassMethod WriteJSONfromMDXP(MDX As %String, Timeout As %Integer = 0, pPage As %Integer = 0, pPageSize As %Integer = 0, pEngine As %String = "", pCubeKey As %String = "", pQueryKey As %String = "") As %Status
+{
+	Set tSC = $$$OK
+	#dim RS As MDX2JSON.ResultSet
+
+	if (pCubeKey '= "") && (pQueryKey '= "") {
+		set RS = ..GetResultSetFromQuery(pCubeKey, pQueryKey, .tSC)
+	} else {
+		set RS = ..GetResultSet(MDX, .tSC)
+	}
+	return:$$$ISERR(tSC) tSC
+
+	set cube = ##class(%DeepSee.Utils).%IsCubeCompound(RS.%Cube)
+	set usePagination = (pPage > 0) && (pPageSize > 0)
+	set pOffset = $S(usePagination:(pPage - 1) * pPageSize, 1:0)
+	set pLimit = $S(usePagination:pPageSize, 1:0)
+
+	if cube {
+		Set tProvider = ##class(%ZEN.Auxiliary.jsonMDXProvider).%New()
+		Set tProvider.mdxQuery = MDX
+		Set tWait = %session.AppTimeout - $S(%session.AppTimeout>2:2,1:0)
+		Set tSC = ##class(%DeepSee.REST.v1.DataServer).%WaitForProviderResults(tProvider,tWait)
+		set tSC = ..ExecuteResultSet(RS, ,Timeout)
+		return:$$$ISERR(tSC) tSC
+		if usePagination {
+			set obj = RS.ToProxyObjectWithPagination(.tSC, pOffset, pLimit)
+		} else {
+			set obj = RS.ToProxyObject(.tSC)
+		}
+		return:$$$ISERR(tSC) tSC
+		set %dsQuery = MDX
+		set %dsResultSet = RS
+		set %dsCubeName = RS.%Cube
+		try { xecute ^DeepSee.AuditQueryCode } catch {}
+		$$$DynObjToJSON(obj)
+	} else {
+		set tSC = ..ExecuteResultSet(RS, ,Timeout)
+		return:$$$ISERR(tSC) tSC
+		if usePagination {
+			set obj = RS.ToProxyObjectWithPagination(.tSC, pOffset, pLimit)
+		} else {
+			set obj = RS.ToProxyObject(.tSC)
+		}
+		return:$$$ISERR(tSC) tSC
+		set %dsQuery = MDX
+		set %dsResultSet = RS
+		try { xecute ^DeepSee.AuditQueryCode } catch {}
+		$$$DynObjToJSON(obj)
+	}
+	return $$$OK
+}
+
 /// Automatic processing of MDX query and outputting resulting JSON.<br>
 /// <b>MDX</b> - String containing MDX query.<br>
 ClassMethod WriteJSONfromQuery(CubeKey As %String, QueryKey As %String, Timeout As %Integer = 0) As %Status
@@ -155,6 +209,32 @@ ClassMethod GetSQLValues(pSQL, Output pValues As %String, Output tResultSet As %
 			Set tCount = tCount + 1
 			set pValues(tCount) = lValue 
 		}	
+	return st
+}
+
+/// Execute SQL and return a paginated slice of rows.<br>
+/// <b>pOffset</b> - rows to skip (0-based). <b>pLimit</b> - max rows to return (0 = all).<br>
+/// <b>pTotalRows</b> - output: total row count (optional; not set if pLimit used without full scan).
+ClassMethod GetSQLValuesWithPagination(pSQL, Output pValues As %String, Output tResultSet As %SQL.Statement, pOffset As %Integer = 0, pLimit As %Integer = 0, Output pTotalRows As %Integer) As %Status
+{
+	set st = $$$OK
+	set pTotalRows = 0
+	Set tResultSet = ##class(%SQL.Statement).%ExecDirect(,pSQL)
+	set tCount = 0
+	set tWritten = 0
+	while tResultSet.%Next() {
+		set tCount = tCount + 1
+		if (pLimit > 0) && (tWritten >= pLimit) continue
+		if (tCount <= pOffset) continue
+		set lValue = ""
+		for i=1:1:tResultSet.%GetMetadata().columnCount {
+			set sNameList(i) = tResultSet.%GetMetadata().columns.GetAt(i).label
+			set lValue = lValue _ $lb(tResultSet.%Get(sNameList(i)))
+		}
+		set tWritten = tWritten + 1
+		set pValues(tWritten) = lValue
+	}
+	set pTotalRows = tCount
 	return st
 }
 
@@ -217,6 +297,75 @@ ClassMethod WriteDrillthroughJSONKPI(tKPI As %String, pFilters As %String, pSele
 			quit $$$ERROR($$$GeneralError, "KPI type " _ kpitype _ " not supported")
 	}
 	
+	return st
+}
+
+/// KPI drillthrough listing with optional pagination.<br>
+/// Same as WriteDrillthroughJSONKPI; when <b>pPage</b> and <b>pPageSize</b> are set, returns only the requested page and adds page, pageSize, totalRows, hasMore to Info.
+ClassMethod WriteDrillthroughJSONKPIP(tKPI As %String, pFilters As %String, pSelection As %String, pPage As %Integer = 0, pPageSize As %Integer = 0) As %Status
+{
+	Set st = $$$OK
+	Set tKpiClassName = ##class(%DeepSee.Utils).%GetKPIClass(tKPI,.tSC)
+	set kpitype = $classmethod(tKpiClassName, "%GetSourceType")
+
+	if (kpitype '= "sql") {
+		quit $$$ERROR($$$GeneralError, "KPI type " _ kpitype _ " not supported")
+	}
+
+	set pSQL = $classmethod(tKpiClassName,"%OnGetListingSQL",pFilters,pSelection)
+	set usePagination = (pPage > 0) && (pPageSize > 0)
+	set pOffset = $S(usePagination:(pPage - 1) * pPageSize, 1:0)
+	set pLimit = $S(usePagination:pPageSize, 1:0)
+
+	if usePagination {
+		set values = ..GetSQLValuesWithPagination(pSQL, .pValue, .tResultSet, pOffset, pLimit, .totalRows)
+	} else {
+		set values = ..GetSQLValues(pSQL, .pValue, .tResultSet)
+		set totalRows = 0
+		for i=1:1 { quit:'$D(pValue(i))  set totalRows = i }
+	}
+
+	for i=1:1:tResultSet.%GetMetadata().columnCount {
+		set pList(i) = tResultSet.%GetMetadata().columns.GetAt(i).label
+		set pList(i, "columnNo") = i
+		Set tKpiPropIdx = $O(pList(""),1,tProperty)
+		Set tKpiPropList = ""
+		While (tKpiPropIdx'="") {
+			Set tKpiPropList = tKpiPropList _ $LB(tProperty)
+			Set tKpiPropArray(tKpiPropIdx) = $LB(tProperty,$G(pList(tKpiPropIdx,"name")),$G(pList(tKpiPropIdx,"columnNo")))
+			Set tKpiPropIdx = $O(pList(tKpiPropIdx),1,tProperty)
+		}
+	}
+	Set tKpiSC = $classmethod(tKpiClassName,"%GetKPIValueArray",tKpiClassName,,.tKpiPropList,.tFilters)
+
+	Set tSC = ##class(%DeepSee.REST.v1.DataServer).%CreateObjectFromArray(.pValue,tKpiPropList,.tValueObj)
+	If $$$ISERR(tSC) Quit tSC
+
+	Set tSC = ##class(%DeepSee.REST.v1.DataServer).%CreateObjectFromArray(.tKpiPropArray,$LB("name","caption","columnNo"),.tPropObj)
+	If $$$ISERR(tSC) Quit tSC
+
+	Set tProvider = ##class(%ZEN.Auxiliary.jsonMDXProvider).%New()
+	Set tInfoObj = tProvider.%ConstructNewDynamicObject()
+	Set tResultObj = tProvider.%ConstructNewDynamicObject()
+
+	Set:$IsObject(tPropObj.children) tResultObj.Properties = tPropObj.children
+	Set:$IsObject(tValueObj.children) tResultObj.Series = tValueObj.children
+
+	Set tInfoObj.Error = tProvider.%StatusToDynamicObject(tKpiSC)
+	Set tInfoObj.KpiName = tKpiClassName
+
+	if usePagination {
+		set tInfoObj.page = pPage
+		set tInfoObj.pageSize = pPageSize
+		set tInfoObj.totalRows = totalRows
+		set tInfoObj.hasMore = (pOffset + $O(pValue(""),-1) < totalRows)
+	}
+
+	Set tKpiObj = tProvider.%ConstructNewDynamicObject()
+	Set tKpiObj.Info = tInfoObj
+	Set tKpiObj.Result = tResultObj
+
+	Set tSC = tProvider.%ObjectToJSON(tKpiObj)
 	return st
 }
 

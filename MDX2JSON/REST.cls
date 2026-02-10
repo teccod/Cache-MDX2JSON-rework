@@ -45,11 +45,13 @@ XData UrlMap
 	<!-- Send objects in this format: {"MDX":"QUERY"} HTTP method: POST -->
 
    <Route Url="/MDX" Method="POST" Call="WriteJSONfromMDX"/>
+   <Route Url="/MDXP" Method="POST" Call="MDXExecuteP"/>
    <Route Url="/CancelQuery/:CubeKey/:QueryKey" Method="GET" Call="%DeepSee.ResultSet:%CancelQuery"/>
    <Route Url="/MDX2JSONP" Method="POST" Call="WriteJSONPfromMDX"/>
    <Route Url="/MDXDrillthrough" Method="POST" Call="WriteDrillthroughJSON" />
    <Route Url="/MDX2XMLA" Method="POST" Call="WriteXMLAfromMDX" />
    <Route Url="/KPI" Method="POST" Call="KPIExecute"/>
+   <Route Url="/KPIP" Method="POST" Call="KPIExecuteP"/>
 
    <!-- Get info about availible filters and their values -->
    <Route Url="/Filters" Method="POST" Call="WriteFiltersForDataSource"/>
@@ -315,6 +317,69 @@ ClassMethod KPIExecute() As %Status
 		set st=ex.AsStatus()
 	}
 
+	return st
+}
+
+/// MDX execution with optional pagination. Same body as POST /MDX; optionally Page, PageSize (or Offset, Limit). If not set, returns full result.
+ClassMethod MDXExecuteP() As %Status
+{
+	try {
+		set mdx = $$$R("MDX")
+		set timeout = $$$R("Timeout")
+		set engine = $$$R("Engine")
+		set cubeKey = $$$R("CubeKey")
+		set queryKey = $$$R("QueryKey")
+		set page = +$$$R("Page")
+		set pageSize = +$$$R("PageSize")
+		set offset = +$$$R("Offset")
+		set limit = +$$$R("Limit")
+		if (page > 0) && (pageSize > 0) {
+			set pOffset = (page - 1) * pageSize
+			set pLimit = pageSize
+		} elseif (limit > 0) {
+			set pOffset = offset
+			set pLimit = limit
+			set page = $S(pLimit>0:(pOffset\pLimit)+1, 1:1)
+			set pageSize = pLimit
+		} else {
+			set page = 0
+			set pageSize = 0
+		}
+		if (engine = "DeepSeeREST") {
+			set st = ##class(MDX2JSON.Utils).WriteJSONfromMDXNew(mdx)
+		} else {
+			set st = ##class(MDX2JSON.Utils).WriteJSONfromMDXP(mdx, timeout, page, pageSize, engine, cubeKey, queryKey)
+		}
+	} catch ex {
+		set st = ex.AsStatus()
+	}
+	return st
+}
+
+/// KPI execution with optional pagination for drillthrough. Same body as POST /KPI; optionally Page, PageSize. If Drillthrough=1 and pagination set, returns one page.
+ClassMethod KPIExecuteP() As %Status
+{
+	try {
+		set KPI = $$$R("KPI")
+		set Drillthrough = $$$R("Drillthrough")
+		set page = +$$$R("Page")
+		set pageSize = +$$$R("PageSize")
+		if (Drillthrough = 1) {
+			set SortOrder = $$$R("SortOrder")
+			if $IsObject(%request.Content) && %request.Content.%IsDefined("FILTERS") {
+				set Filters = $$$R("FILTERS")
+			} else {
+				set Filters = $$$R("Filters")
+			}
+			set SortColumn = $$$R("SortColumn")
+			set pSelection = SortColumn _ "," _ SortOrder
+			set st = ##class(MDX2JSON.Utils).WriteDrillthroughJSONKPIP(KPI, Filters, pSelection, page, pageSize)
+		} else {
+			set st = ##class(%DeepSee.REST.v1.DataServer).WriteJSONfromKPI(KPI)
+		}
+	} catch ex {
+		set st = ex.AsStatus()
+	}
 	return st
 }
 

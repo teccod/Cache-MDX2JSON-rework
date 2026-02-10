@@ -79,9 +79,11 @@ These are the possible requests to web application (add param ?Namespace={Desire
 | URL                         | Type | Body (JSON)                 | Response  | Description                    |
 |-----------------------------|------|-----------------------------|-----------|--------------------------------|
 | MDX                         | POST | { "MDX":"QUERY" }           | JSON      | Results of MDX execution       |
+| MDXP                        | POST | Same as MDX; optionally "Page", "PageSize" (1-based) or "Offset", "Limit" | JSON | MDX with optional pagination (debug / paged results). If omitted, full result. |
 | MDX2JSONP                   | POST | { "MDX":"QUERY" }           | JSONP     | Results of MDX execution       |
 | MDXDrillthrough             | POST | { "MDX":"QUERY" }           | JSON      | Results of MDX execution       |
 | MDX2XMLA                    | POST | { "MDX":"QUERY" }           | XMLA      | Results of MDX execution       |
+| KPIP                        | POST | Same as KPI; when Drillthrough=1 optionally "Page", "PageSize" | JSON | KPI drillthrough listing with optional pagination. If omitted, full list. |
 | Dashboards                  | GET  |                             | JSON      | All dashboards                 |
 | Dashboards                  | POST | {Folder:"FolderName"}       | JSON      | All dashboards in FolderName. Empty FolderName for root scope.|
 | Dashboard                   | POST | {Dashboard:"DashboardName"} | JSON      | All widgets in a dashboard, with filters as part of dashboard|

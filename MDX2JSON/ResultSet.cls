@@ -276,6 +276,113 @@ Method DataToListOfDataTypes() As %DynamicArray
 	return data
 }
 
+/// Returns array of cells for a slice of rows (for pagination).<br>
+/// <b>pOffset</b> - number of rows to skip (0-based).<br>
+/// <b>pLimit</b> - max number of rows to return (0 = no limit).<br>
+/// Same iteration as DataToListOfDataTypes() but only rows in range [pOffset, pOffset+pLimit).
+Method DataToListOfDataTypesSlice(pOffset As %Integer = 0, pLimit As %Integer = 0) As %DynamicArray
+{
+	set data = []
+	set tCubeIndex = ..%CubeKey
+	set tQueryKey = ..%QueryKey
+	set tAxisCount = ..%GetAxisCount()
+	set tAddr = tAxisCount
+	set tNodeNo = ""
+
+	for a=1:1:tAxisCount {
+		Set tItemNo(a) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",a,""),1,tNodeNo)
+		Set tAddr(a) = $G(tNodeNo)
+	}
+
+	set tNodeNo = ""
+
+	if (tAxisCount = 0) {
+		if (pOffset = 0) && ((pLimit = 0) || (pLimit >= 1)) {
+			do data.%Push(..%GetValue(), "number")
+		}
+		return data
+	}
+	if (tAxisCount = 1) {
+		set tRowIndex = 0
+		while (tItemNo(1)'="") {
+			if (pLimit > 0) && (tRowIndex >= pOffset + pLimit) quit
+			if (tRowIndex >= pOffset) {
+				do data.%Push(..%GetValue(tAddr(1)), "number")
+			}
+			set tRowIndex = tRowIndex + 1
+			set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,tItemNo(1)),1,tNodeNo)
+			set tAddr(1) = tNodeNo
+		}
+		return data
+	}
+	// 2 axes: row = axis 2 iteration
+	set tRowIndex = 0
+	while(tItemNo(2)'="") {
+		if (pLimit > 0) && (tRowIndex >= pOffset + pLimit) quit
+		if (tRowIndex >= pOffset) {
+			set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,""),1,tNodeNo)
+			set tAddr(1) = tNodeNo
+			while (tItemNo(1)'="") {
+				set tValue = ..%GetValue(tAddr...)
+				do data.%Push(tValue, "number")
+				set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,tItemNo(1)),1,tNodeNo)
+				set tAddr(1) = tNodeNo
+			}
+		} else {
+			set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,""),1,tNodeNo)
+			set tAddr(1) = tNodeNo
+			while (tItemNo(1)'="") {
+				set tItemNo(1) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",1,tItemNo(1)),1,tNodeNo)
+				set tAddr(1) = tNodeNo
+			}
+		}
+		set tRowIndex = tRowIndex + 1
+		set tItemNo(2) = $O($$$DeepSeeResultsGLVN(tCubeIndex,tQueryKey,"leaf",2,tItemNo(2)),1,tNodeNo)
+		set tAddr(2) = tNodeNo
+	}
+	return data
+}
+
+/// Converts ResultSet to DynamicObject with optional row pagination.<br>
+/// <b>pOffset</b> - rows to skip (0-based). <b>pLimit</b> - max rows to return (0 = all).<br>
+/// If both 0, delegates to ToProxyObject(). Otherwise uses DataToListOfDataTypesSlice and adds pagination fields to Info.
+Method ToProxyObjectWithPagination(Output pStatus As %Status, pOffset As %Integer = 0, pLimit As %Integer = 0) As %Library.DynamicObject
+{
+	if (pOffset = 0) && (pLimit = 0) {
+		return ..ToProxyObject(.pStatus)
+	}
+	set ^DeepSee.QueryLog($UserName,$I(^DeepSee.QueryLog($UserName))) = ..%GetQueryText()
+	set pStatus = $$$ERROR($$$GeneralError,"Error occured while executing ##class(MDX2JSON.ResultSet).ToProxyObjectWithPagination() method")
+
+	set obj = $$$NewDynObj
+	if (..%Query.queryType = "DRILLTHROUGH") {
+		set pStatus = $$$ERROR($$$GeneralError, "DRILLTHROUGH queries are not supported")
+		return ""
+	}
+
+	try {
+		set obj.Info = ..InfoToProxyObject()
+		quit:obj.Info.percentDone<100
+
+		set obj.Cols = ..AxesToListOfObjects()
+		set obj.Data = ..DataToListOfDataTypesSlice(pOffset, pLimit)
+
+		set totalRows = +$G(obj.Info.rowCount, 0)
+		set totalCols = +$G(obj.Info.colCount, 0)
+		set obj.Info.page = (pOffset \ $S(pLimit>0:pLimit, 1:1)) + 1
+		set obj.Info.pageSize = $S(pLimit>0:pLimit, 1:totalRows)
+		set obj.Info.totalRows = totalRows
+		set obj.Info.totalCols = totalCols
+		set sliceRows = $S(totalCols>0:obj.Data.%Size()\totalCols, 1:obj.Data.%Size())
+		set obj.Info.hasMore = (pOffset + sliceRows < totalRows)
+	} catch ex {
+		set pStatus = ex.AsStatus()
+		return ""
+	}
+	set pStatus = $$$OK
+	return obj
+}
+
 ClassMethod GetDefaultAxes() As %DynamicArray [ Internal ]
 {
 	set axes = [] // all axes
