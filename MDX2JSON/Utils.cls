@@ -259,7 +259,25 @@ ClassMethod WriteDrillthroughJSON(pMDX As %String) As %Status
 	return:$$$ISERR(st) st
 	
 	set SQL = RS.%GetListingSQL()
-	do ##class(%ZEN.Auxiliary.altJSONSQLProvider).%WriteJSONFromSQL(,SQL,,$$$MaxCacheInt)
+	
+	set rs = ##class(%SQL.Statement).%ExecDirect(, SQL)
+	set list = []
+    
+    while rs.%Next() {
+        set row = {}
+        for i=1:1:rs.%ResultColumnCount {
+            set colName = rs.%GetMetadata().columns.GetAt(i).colName
+            set colValue = rs.%GetData(i)
+            do row.%Set(colName, colValue)
+        }
+        do list.%Push(row)
+    }
+    
+    set result = {
+        "children": (list)
+    }
+    
+    do result.%ToJSON(.stream)
 
 	return $$$OK
 }
@@ -343,6 +361,7 @@ ClassMethod GetDataSource(pDataSource As %String)
 				return:($$$ISERR(st)) st
 				set dataSource.mdx = mdx
 			}
+
 			set st = ##class(%ZEN.Auxiliary.jsonProvider).%ObjectToJSON(dataSource, .out)
 			
 		}
@@ -372,7 +391,8 @@ ClassMethod OpenPivotByName(PivotName As %Integer, Output Pivot As %DeepSee.Dash
 	 		
 	 	/// first we check that it's a pivot (not a dashboard, etc.)
 		set oid = ##class(%DeepSee.UserLibrary.FolderItem).%ComposeOid(id)
-	    do ##class(%DeepSee.UserLibrary.FolderItem).%OnDetermineClass(oid, .class)
+		
+		do ##class(%DeepSee.UserLibrary.FolderItem).%OnDetermineClass(oid, .class)
 	    CONTINUE:class'=pivotclass
 	    
 	    /// second we check that it's the one we need
@@ -557,7 +577,7 @@ ClassMethod CreateAddons(Addons As %DynamicArray) As %Status
 {
 	#dim sc,sc1 As %Status = $$$OK
 	set base = "DSW.Addons."
-	for i=1:1:Addons.%Size() {
+	for i=0:1:(Addons.%Size()-1) {
 		set file = Addons.%Get(i)
 		
 		set file = ##class(%File).GetFilename(file)

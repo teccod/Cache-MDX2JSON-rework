@@ -16,12 +16,17 @@ ClassMethod WidgetsToProxyObject(Dashboard As %DeepSee.Dashboard.Definition, Out
 	
 	set st = $$$OK
 	try {
-		set filters = []
+		
 		for i=1:1:Dashboard.widgets.Count() {
 			do Widgetlist.widgets.%Push(..WidgetToProxyObject(Dashboard.widgets.GetAt(i), ..GetWidgetCube(Dashboard, i)))
-			do filters.%Push(..WidgetFiltersToProxyObject(Dashboard.widgets.GetAt(i), ..GetWidgetCube(Dashboard, i)).filter)
-			for j=1:1:filters.%Size() {
-				if filters.%Get(j)'=""{do Widgetlist.filters.%Push(filters.%Get(j))}
+			set filters = []
+			set filters = ..WidgetFiltersToProxyObject(Dashboard.widgets.GetAt(i), ..GetWidgetCube(Dashboard, i))
+			
+			for j=0:1:(filters.%Size()-1) {
+				if filters.%Get(j)'=""{
+					do Widgetlist.filters.%Push(filters.%Get(j))
+				}
+				
 			}
 		}
 	} catch ex {
@@ -36,15 +41,16 @@ ClassMethod WidgetsToProxyObject(Dashboard As %DeepSee.Dashboard.Definition, Out
 /// Converts relevant parts of %DeepSee.Dashboard.Widget object into %Library.DynamicObject.
 ClassMethod WidgetFiltersToProxyObject(Widget As %DeepSee.Dashboard.Widget, CubeName As %String) As %Library.DynamicObject [ Internal ]
 {
-	set obj = ##class(%Library.DynamicObject).%New()
+	set obj = []
 	for i=1:1:Widget.controls.Count()
 	{
 		set filter = ..WidgetFilterToProxyObject(Widget, i, CubeName)
-		
+
 		if $IsObject(filter){
-			set obj.filter = filter
+			do obj.%Push(filter)
 		}
 	}
+	
 	return obj
 }
 

@@ -151,8 +151,8 @@ Method ProcessOneAxisCell(CubeIndex, AxisKey, CubeName, QueryKey, AxisNumber, No
 
 	//To filter out invisible сells
 	if (..IsCellNull(cell, AxisNumber, Node)=1) {
-		return cell.children
-	}
+    return cell.children  // or return $$$NULLOREF, depending on your needs
+}
 
 	try {
 		set cell.path = ##class(%DeepSee.Query.Engine).%GetSpecForAxisNode(CubeName, QueryKey, AxisNumber, Node) // MDX cell path

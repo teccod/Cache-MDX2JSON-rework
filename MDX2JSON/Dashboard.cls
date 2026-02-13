@@ -80,14 +80,14 @@ ClassMethod WidgetsToProxyObject(Dashboard As %DeepSee.Dashboard.Definition, Out
 	#Dim widget As %DeepSee.Dashboard.Widget
 	
 	set Widgetlist = $$$NewDynObj
-	set Widgetlist.children = $$$NewDynObjList
+	set Widgetlist.children = []
 	set Widgetlist.displayInfo = ..GetDashboardDisplayInfo(Dashboard)
 	set Widgetlist.info = ..GetDashboardInfo(Dashboard)
 
 	set st = $$$OK
 	try {
 		for i=1:1:Dashboard.widgets.Count() {
-			$$$Insert(Widgetlist.children,..WidgetToProxyObject(Dashboard.widgets.GetAt(i), ..GetWidgetCube(Dashboard, i)))
+			do Widgetlist.children.%Push((..WidgetToProxyObject(Dashboard.widgets.GetAt(i), ..GetWidgetCube(Dashboard, i))))
 		}
 	} catch ex {
 		set st = ex.AsStatus()
@@ -184,7 +184,7 @@ ClassMethod WidgetToProxyObject(Widget As %DeepSee.Dashboard.Widget, CubeName As
 	for i=1:1:Widget.dataProperties.Count()
 	{
 		set widgetData = Widget.dataProperties.GetAt(i)
- 		d ##class(%ZEN.Auxiliary.jsonProvider).%ConvertJSONToObject(widgetData.override,,.override)
+ 		d ##class(%ZEN.Auxiliary.jsonProvider).%ConvertJSONToObject(widgetData.override,"%DynamicObject",.override)
  		set widgetData.override = override
  		set dataProperty = ..WidgetDataPropertyToProxyObject(widgetData)
 		if $IsObject(dataProperty) {
